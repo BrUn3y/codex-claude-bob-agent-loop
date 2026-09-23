@@ -12,6 +12,12 @@ TriForge is a reusable, dependency-free project template that turns Codex, Claud
 
 The live log makes every handoff auditable: three parallel consultations feed one implementation, Codex and Claude review Bob's work independently, and the loop completes only after unanimous approval. The same events are persisted in `live.log` and `transcript.jsonl`.
 
+## Interactive agent-loop architecture
+
+[![TriForge interactive agent-loop architecture](assets/triforge-agent-loop-architecture.png)](https://brun3y.github.io/triforge/)
+
+Open the [interactive Archify diagram](https://brun3y.github.io/triforge/) to trace the full workflow, switch themes, focus relationships, and export the view. The diagram is generated from [`docs/triforge-agent-loop.workflow.json`](docs/triforge-agent-loop.workflow.json) as a self-contained GitHub Pages artifact.
+
 ## Why this exists
 
 Agent instruction files provide durable context, but they do not create process-to-process communication. This template adds a small Python coordinator that passes every agent's output to its peers, persists each handoff, runs two reviews in parallel, and prevents multiple agents from editing the same working tree simultaneously.
@@ -312,3 +318,9 @@ Values are parsed as command lines, so wrappers with fixed arguments are support
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+
+
+---
+
+Last updated: 2026-09-22

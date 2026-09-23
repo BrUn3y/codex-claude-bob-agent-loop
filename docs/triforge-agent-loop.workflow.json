@@ -1,0 +1,90 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "TriForge Agent Loop",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/index.html"
+  },
+  "lanes": [
+    { "id": "control", "label": "Objective & Coordination" },
+    { "id": "codex", "label": "Codex" },
+    { "id": "claude", "label": "Claude Code" },
+    { "id": "bob", "label": "Bob Shell" }
+  ],
+  "phases": [
+    { "id": "intake", "label": "Intake", "fromCol": 0, "toCol": 1 },
+    { "id": "consultation", "label": "Parallel consultation", "fromCol": 2, "toCol": 2, "variant": "emphasis" },
+    { "id": "delivery", "label": "Implement + review", "fromCol": 3, "toCol": 4 },
+    { "id": "decision", "label": "Decision", "fromCol": 5, "toCol": 5, "variant": "dashed" }
+  ],
+  "groups": [
+    { "id": "peer_consultation", "label": "Independent opinions", "lane": "codex", "fromCol": 2, "toCol": 2, "variant": "emphasis" },
+    { "id": "peer_review", "label": "Parallel peer review", "lane": "claude", "fromCol": 4, "toCol": 4, "variant": "security" }
+  ],
+  "mainPath": [
+    "objective",
+    "coordinator",
+    "codex_consult",
+    "implementer",
+    "reviewer_a",
+    "verdict",
+    "complete"
+  ],
+  "semanticChecks": {
+    "allowedRoots": ["objective"],
+    "allowedTerminals": ["complete"],
+    "requiredPaths": [
+      { "from": "objective", "to": "complete" }
+    ]
+  },
+  "nodes": [
+    { "id": "objective", "lane": "control", "col": 0, "type": "external", "label": "User Objective", "sublabel": "names the coordinator", "width": 140 },
+    { "id": "coordinator", "lane": "control", "col": 1, "type": "backend", "label": "Agent Coordinator", "sublabel": "dispatches + persists", "tag": "single loop owner", "width": 148 },
+    { "id": "codex_consult", "lane": "codex", "col": 2, "type": "backend", "label": "Codex Consults", "sublabel": "read-only opinion", "width": 140 },
+    { "id": "claude_consult", "lane": "claude", "col": 2, "type": "backend", "label": "Claude Consults", "sublabel": "read-only opinion", "width": 140 },
+    { "id": "bob_consult", "lane": "bob", "col": 2, "type": "backend", "label": "Bob Consults", "sublabel": "read-only opinion", "width": 140 },
+    { "id": "implementer", "lane": "control", "col": 3, "type": "messagebus", "label": "Rotating Implementer", "sublabel": "one writer at a time", "tag": "no approval prompts", "width": 152 },
+    { "id": "reviewer_a", "lane": "codex", "col": 4, "type": "security", "label": "Peer Reviewer A", "sublabel": "tests + diff", "width": 140 },
+    { "id": "reviewer_b", "lane": "claude", "col": 4, "type": "security", "label": "Peer Reviewer B", "sublabel": "independent verdict", "width": 140 },
+    { "id": "verdict", "lane": "control", "col": 4, "type": "security", "label": "Verdict Aggregator", "sublabel": "requires 2 approvals", "tag": "unanimous", "width": 148 },
+    { "id": "complete", "lane": "control", "col": 5, "type": "cloud", "label": "Complete", "sublabel": "verified result", "width": 132 }
+  ],
+  "edges": [
+    { "id": "submit_objective", "from": "objective", "to": "coordinator", "label": "start loop", "variant": "emphasis" },
+    { "id": "dispatch_codex", "from": "coordinator", "to": "codex_consult", "label": "parallel", "role": "async" },
+    { "id": "dispatch_claude", "from": "coordinator", "to": "claude_consult", "role": "async" },
+    { "id": "dispatch_bob", "from": "coordinator", "to": "bob_consult", "role": "async" },
+    { "id": "codex_handoff", "from": "codex_consult", "to": "implementer", "label": "opinion", "variant": "emphasis" },
+    { "id": "claude_handoff", "from": "claude_consult", "to": "implementer", "role": "return" },
+    { "id": "bob_handoff", "from": "bob_consult", "to": "implementer", "role": "return" },
+    { "id": "request_review_a", "from": "implementer", "to": "reviewer_a", "label": "parallel review", "role": "async" },
+    { "id": "request_review_b", "from": "implementer", "to": "reviewer_b", "role": "async" },
+    { "id": "review_a_verdict", "from": "reviewer_a", "to": "verdict", "label": "verdict", "variant": "security" },
+    { "id": "review_b_verdict", "from": "reviewer_b", "to": "verdict", "variant": "security" },
+    { "id": "approved", "from": "verdict", "to": "complete", "label": "both approve", "variant": "emphasis" },
+    { "id": "revise", "from": "verdict", "to": "implementer", "label": "changes requested", "variant": "dashed", "role": "return" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Parallel Where Safe",
+      "items": [
+        "All three consultations run concurrently and read-only",
+        "The two non-implementers review independently in parallel"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Serialized Where Necessary",
+      "items": [
+        "Only one agent writes to the shared working tree",
+        "Changes rotate to the next implementer until both peers approve",
+        "live.log exposes readable handoffs in real time",
+        "transcript.jsonl and response files preserve exact evidence",
+        "Any BLOCKED verdict stops the loop with its evidence intact"
+      ]
+    }
+  ]
+}
