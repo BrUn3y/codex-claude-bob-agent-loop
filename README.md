@@ -16,7 +16,7 @@ Agent instruction files provide durable context, but they do not create process-
 
 ### Option 1: Use the GitHub template
 
-1. Open the [TriForge template](https://github.com/BrUn3y/codex-claude-bob-agent-loop/generate).
+1. Open the [TriForge template](https://github.com/BrUn3y/triforge/generate).
 2. Choose an owner and repository name.
 3. Select public or private visibility.
 4. Click **Create repository**.
@@ -31,7 +31,7 @@ cd YOUR-PROJECT
 
 ```bash
 gh repo create YOUR-PROJECT \
-  --template BrUn3y/codex-claude-bob-agent-loop \
+  --template BrUn3y/triforge \
   --public \
   --clone
 
