@@ -1,6 +1,10 @@
-# Codex + Claude + Bob Agent Loop
+# TriForge
 
-A reusable, dependency-free project template that makes Codex, Claude Code, and Bob Shell work as an auditable engineering team. All three agents form independent opinions in parallel, one implements, and the other two review independently. Approval requires both reviewers.
+## The Three-Agent Engineering Council
+
+**Codex. Claude. Bob. One objective. Two independent reviews. Zero approval prompts.**
+
+TriForge is a reusable, dependency-free project template that turns Codex, Claude Code, and Bob Shell into an auditable engineering council. All three agents form independent opinions in parallel, one implements, and the other two review independently. Nothing ships without unanimous peer approval.
 
 **Created by Bruney for Bruney.**
 

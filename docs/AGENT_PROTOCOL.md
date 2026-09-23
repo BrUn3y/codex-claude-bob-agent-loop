@@ -1,4 +1,4 @@
-# Codex–Claude–Bob Coordination Protocol
+# TriForge Coordination Protocol
 
 ## Purpose
 

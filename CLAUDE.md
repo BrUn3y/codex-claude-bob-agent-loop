@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a coordinator system for managing agent-based development workflows. It enables Codex, Claude Code, and Bob Shell to collaborate through a structured protocol with parallel consultation, one implementation turn, and two independent peer reviews.
+This is **TriForge**, the Three-Agent Engineering Council. It enables Codex, Claude Code, and Bob Shell to collaborate through a structured protocol with parallel consultation, one implementation turn, and two independent peer reviews.
 
 The coordinator orchestrates all three agents to deliver correct, tested changes while keeping them synchronized through the repository as the source of truth.
 
