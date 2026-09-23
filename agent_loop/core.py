@@ -8,6 +8,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -46,6 +47,7 @@ class LoopConfig:
     codex_command: tuple[str, ...] = ("codex",)
     claude_command: tuple[str, ...] = ("claude",)
     bob_command: tuple[str, ...] = ("bob",)
+    live: bool = False
 
     def __post_init__(self) -> None:
         if self.max_rounds < 1:
@@ -81,6 +83,7 @@ class RunOutcome:
 class SessionStore:
     root: Path
     objective: str
+    live: bool = False
     session_id: str = field(default_factory=lambda: _new_session_id())
     _sequence: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock)
@@ -89,6 +92,7 @@ class SessionStore:
         self.directory = self.root / ".agent-loop" / "sessions" / self.session_id
         for name in ("prompts", "responses", "logs"):
             (self.directory / name).mkdir(parents=True, exist_ok=True)
+        _atomic_text(self.root / ".agent-loop" / "latest-session", self.session_id + "\n")
         (self.directory / "objective.md").write_text(
             f"# Objective\n\n{self.objective.strip()}\n", encoding="utf-8"
         )
@@ -117,6 +121,11 @@ class SessionStore:
             }
             with (self.directory / "transcript.jsonl").open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+            rendered = self._render_live(record)
+            with (self.directory / "live.log").open("a", encoding="utf-8") as handle:
+                handle.write(rendered)
+            if self.live:
+                print(rendered, file=sys.stderr, end="", flush=True)
 
     def save_turn(self, stem: str, prompt: str, result: CommandResult) -> None:
         (self.directory / "prompts" / f"{stem}.md").write_text(prompt + "\n", encoding="utf-8")
@@ -128,7 +137,30 @@ class SessionStore:
             f"RETURN CODE: {result.returncode}\n\nSTDOUT\n{result.stdout}\n\nSTDERR\n{result.stderr}\n"
         )
         (self.directory / "logs" / f"{stem}.log").write_text(log, encoding="utf-8")
-        self.event(result.agent, stem, "response", {"file": f"responses/{stem}.md"})
+        self.event(
+            result.agent,
+            stem,
+            "response",
+            {"file": f"responses/{stem}.md", "returncode": result.returncode},
+        )
+
+    def _render_live(self, record: dict[str, object]) -> str:
+        timestamp = str(record["timestamp"]).split("T")[-1].replace("+00:00", "Z")
+        header = (
+            f"[{timestamp}] #{record['sequence']} "
+            f"{str(record['agent']).upper()} {record['phase']} {record['type']}"
+        )
+        payload = record["payload"]
+        lines = [header]
+        if record["type"] == "response" and isinstance(payload, dict):
+            relative = payload.get("file")
+            if isinstance(relative, str):
+                response_file = self.directory / relative
+                if response_file.is_file():
+                    lines.extend(("---", response_file.read_text(encoding="utf-8").rstrip(), "---"))
+        elif payload:
+            lines.append(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+        return "\n".join(lines) + "\n"
 
 
 class AgentRunner:
@@ -221,12 +253,19 @@ class AgentRunner:
 def run_loop(config: LoopConfig) -> RunOutcome:
     root = config.root.resolve()
     _validate_root(root)
-    store = SessionStore(root=root, objective=config.objective)
+    store = SessionStore(root=root, objective=config.objective, live=config.live)
     runner = AgentRunner(config)
 
     try:
         store.set_state("PARALLEL_CONSULTATION", rounds=0)
+        store.event(
+            "coordinator",
+            "consultation",
+            "started",
+            {"agents": list(AGENT_NAMES)},
+        )
         consultations = _run_consultations(runner, store, config.objective)
+        store.event("coordinator", "consultation", "completed", {"agents": list(AGENT_NAMES)})
         previous_reviews: str | None = None
         implementer = (
             config.first_implementer
@@ -238,6 +277,12 @@ def run_loop(config: LoopConfig) -> RunOutcome:
         for round_number in range(1, config.max_rounds + 1):
             reviewers = _reviewers(implementer)
             store.set_state("IMPLEMENTING", rounds=round_number, active_agent=implementer)
+            store.event(
+                implementer,
+                "implementation",
+                "started",
+                {"round": round_number, "reviewers": list(reviewers)},
+            )
             implementation = implementation_prompt(
                 implementer,
                 reviewers,
@@ -252,6 +297,12 @@ def run_loop(config: LoopConfig) -> RunOutcome:
             _ensure_success(implementation_result, config.timeout_seconds)
 
             store.set_state("REVIEWING", rounds=round_number, active_agents=list(reviewers))
+            store.event(
+                "coordinator",
+                "review",
+                "started",
+                {"round": round_number, "reviewers": list(reviewers)},
+            )
             review_results, review_verdicts = _run_reviews(
                 runner,
                 store,
@@ -270,15 +321,27 @@ def run_loop(config: LoopConfig) -> RunOutcome:
             )
 
             if verdict == "APPROVED":
+                store.event(
+                    "coordinator", "session", "completed", {"round": round_number, "verdict": verdict}
+                )
                 store.set_state("COMPLETE", rounds=round_number, verdict=verdict)
                 return RunOutcome(store.session_id, "COMPLETE", round_number, store.directory, verdict)
             if verdict == "BLOCKED":
+                store.event(
+                    "coordinator", "session", "blocked", {"round": round_number, "verdict": verdict}
+                )
                 store.set_state("BLOCKED", rounds=round_number, verdict=verdict)
                 return RunOutcome(store.session_id, "BLOCKED", round_number, store.directory, verdict)
 
             previous_reviews = _review_bundle(review_results, review_verdicts)
             implementer = _next_implementer(implementer)
 
+        store.event(
+            "coordinator",
+            "session",
+            "max_rounds",
+            {"rounds": config.max_rounds, "verdict": "CHANGES_REQUESTED"},
+        )
         store.set_state("MAX_ROUNDS", rounds=config.max_rounds, verdict="CHANGES_REQUESTED")
         return RunOutcome(
             store.session_id,
@@ -499,5 +562,13 @@ def _atomic_json(path: Path, payload: object) -> None:
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, delete=False) as handle:
         json.dump(payload, handle, indent=2, ensure_ascii=False)
         handle.write("\n")
+        temporary = Path(handle.name)
+    temporary.replace(path)
+
+
+def _atomic_text(path: Path, value: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, delete=False) as handle:
+        handle.write(value)
         temporary = Path(handle.name)
     temporary.replace(path)

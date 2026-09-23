@@ -6,6 +6,7 @@ This file contains durable, verified knowledge shared by Codex, Claude Code, and
 
 - The coordinator uses only the Python standard library.
 - Agent communication is file-backed and auditable through per-session JSONL transcripts.
+- Each session also has a human-readable `live.log`; `agent-loop watch` follows the latest session in real time.
 - All three consultations run in parallel. One agent implements while the other two review independently in parallel, preventing simultaneous edits to the same working tree.
 - Permission bypass is passed explicitly to all three CLIs by the coordinator because repository settings alone cannot reliably enable it for every installation.
 - The user explicitly activates the neutral coordinator. Codex, Claude, and Bob are symmetric peers; automatic first-turn assignment does not permanently privilege any product.

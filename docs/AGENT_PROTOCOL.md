@@ -47,12 +47,13 @@ Each run creates an ignored directory:
 ├── session.json
 ├── objective.md
 ├── transcript.jsonl
+├── live.log
 ├── prompts/
 ├── responses/
 └── logs/
 ```
 
-`transcript.jsonl` is append-only. Every line contains a timestamp, sequence number, phase, agent, event type, and payload. Prompt and response files make a session auditable without committing ephemeral context.
+`transcript.jsonl` is append-only. Every line contains a timestamp, sequence number, phase, agent, event type, and payload. `live.log` mirrors those events in a human-readable format and includes completed handoff content. Prompt and response files make a session auditable without committing ephemeral context. The coordinator stores the newest session ID in `.agent-loop/latest-session` so `agent-loop watch` can follow it.
 
 ## Turn rules
 

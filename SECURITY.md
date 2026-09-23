@@ -16,7 +16,7 @@ For stronger isolation, run the template inside an ephemeral container or virtua
 
 ## Secret handling
 
-The coordinator stores prompts, responses, and logs under `.agent-loop/`. This directory is ignored by Git, but it remains on disk. Never include secrets in objectives or agent handoffs. Delete local session data according to your own retention policy.
+The coordinator stores prompts, responses, the human-readable `live.log`, and process logs under `.agent-loop/`. This directory is ignored by Git, but it remains on disk and may be displayed by `agent-loop watch`. Never include secrets in objectives or agent handoffs. Delete local session data according to your own retention policy.
 
 ## Reporting
 

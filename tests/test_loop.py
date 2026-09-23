@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import io
 import os
 import shutil
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr
 from pathlib import Path
 from unittest.mock import patch
 
@@ -154,6 +156,20 @@ class LoopTests(unittest.TestCase):
             aggregate_verdicts({"claude": "CHANGES_REQUESTED", "bob": "BLOCKED"}),
             "BLOCKED",
         )
+
+    def test_human_log_is_persisted_and_streamed_live(self) -> None:
+        stream = io.StringIO()
+        with redirect_stderr(stream):
+            outcome = run_loop(self.config(max_rounds=1, live=True))
+
+        live_log = (outcome.session_dir / "live.log").read_text(encoding="utf-8")
+        self.assertEqual(stream.getvalue(), live_log)
+        self.assertIn("COORDINATOR consultation started", live_log)
+        self.assertIn("CODEX consult-codex response", live_log)
+        self.assertIn("CLAUDE consult-claude response", live_log)
+        self.assertIn("BOB consult-bob response", live_log)
+        self.assertIn("COORDINATOR review aggregate_verdict", live_log)
+        self.assertIn("COORDINATOR session max_rounds", live_log)
 
     def test_blocked_verdict_is_a_terminal_state(self) -> None:
         with patch.dict(os.environ, {"MOCK_BLOCK_FIRST": "1"}):

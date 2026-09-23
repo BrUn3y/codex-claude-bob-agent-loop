@@ -67,6 +67,7 @@ Start a development loop with an inline objective:
 
 ```bash
 python3 -m agent_loop run \
+  --live \
   "Add pagination to the API, include focused tests, and update the documentation."
 ```
 
@@ -93,6 +94,29 @@ Inspect the latest local session:
 python3 -m agent_loop status
 ```
 
+## Real-time communication log
+
+Use `--live` to print every phase transition, completed agent response, individual verdict, and aggregate verdict to the terminal while preserving the final JSON result on standard output:
+
+```bash
+python3 -m agent_loop run --live "Your objective"
+```
+
+To follow the same communication from a second terminal:
+
+```bash
+python3 -m agent_loop watch
+```
+
+Watch a specific session or print its current log without waiting:
+
+```bash
+python3 -m agent_loop watch --session 20260923T030128Z-cf4d9e7f
+python3 -m agent_loop watch --no-follow
+```
+
+The readable stream is saved as `live.log`. The machine-readable source remains `transcript.jsonl`. Output is emitted when an agent completes a handoff; the coordinator does not expose private chain-of-thought or raw token-by-token reasoning.
+
 The wrapper provides the same commands from any working directory:
 
 ```bash
@@ -108,6 +132,7 @@ Each run creates `.agent-loop/sessions/<session-id>/`, which is ignored by Git:
 session.json       Current state and aggregate verdict
 objective.md       Original objective
 transcript.jsonl   Ordered event ledger
+live.log           Human-readable live communication stream
 prompts/           Exact prompts sent to each agent
 responses/         Consultations, handoffs, and reviews
 logs/              Commands, exit status, stdout, and stderr
