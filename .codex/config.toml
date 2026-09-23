@@ -1,0 +1,8 @@
+# Shared project defaults. The coordinator also passes equivalent CLI flags so
+# non-interactive runs do not depend on project-trust configuration loading.
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+web_search = "cached"
+
+[features]
+multi_agent = true

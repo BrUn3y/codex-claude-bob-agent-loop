@@ -1,0 +1,10 @@
+.agent-loop/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+.DS_Store
+.claude/settings.local.json
+CLAUDE.local.md
