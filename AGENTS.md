@@ -4,13 +4,13 @@ These instructions apply to Codex and every coding agent working in this reposit
 
 ## Mission
 
-Deliver correct, tested changes while keeping Codex and Claude Code synchronized through the repository's shared protocol. Treat the other agent as an engineering peer, not as an oracle.
+Deliver correct, tested changes while keeping Codex, Claude Code, and Bob Shell synchronized through the repository's shared protocol. Treat every other agent as an engineering peer, not as an oracle.
 
 ## Coordinator activation
 
 The loop is user-controlled. Activate it only when the user explicitly runs `agent-loop` or says `Use Agent Coordinator` with an objective. Do not start a peer process for an ordinary single-agent request. When explicitly activated from an agent session, invoke `./scripts/agent-loop run` once with the user's objective and report the resulting session state. Coordinator-generated child prompts are turns inside that session, not new activation requests.
 
-Codex and Claude Code are equal peers. They receive the same repository scope and effective tool authority. Either can implement or review, and neither agent may overrule the other's evidence merely because of product identity. Phase-specific read-only constraints apply equally to whichever agent is the reviewer.
+Codex, Claude Code, and Bob Shell are equal peers. They receive the same repository scope and effective tool authority. Any of them can implement or review, and no agent may overrule another's evidence merely because of product identity. Phase-specific read-only constraints apply equally to every reviewer.
 
 ## Required context
 
@@ -54,7 +54,7 @@ VERDICT: CHANGES_REQUESTED
 VERDICT: BLOCKED
 ```
 
-Use `APPROVED` only when the objective is satisfied and verification passes. Use `BLOCKED` only for a concrete condition that neither agent can resolve from the repository.
+Use `APPROVED` only when the objective is satisfied and verification passes. Use `BLOCKED` only for a concrete condition that the agent team cannot resolve from the repository.
 
 ## Shared memory
 

@@ -2,7 +2,7 @@
 
 ## No-prompt execution
 
-This template deliberately launches Codex and Claude Code with permission checks bypassed. A compromised dependency, malicious repository instruction, or prompt injection could therefore execute commands with the current user's privileges.
+This template deliberately launches Codex, Claude Code, and Bob Shell with permission checks bypassed. A compromised dependency, malicious repository instruction, or prompt injection could therefore execute commands with the current user's privileges.
 
 Use the live loop only when all of the following are true:
 

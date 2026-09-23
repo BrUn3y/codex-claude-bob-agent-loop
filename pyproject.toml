@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "codex-claude-agent-loop"
+name = "codex-claude-bob-agent-loop"
 version = "0.1.0"
-description = "A file-backed engineering loop for Codex and Claude Code"
+description = "A file-backed engineering loop for Codex, Claude Code, and Bob Shell"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

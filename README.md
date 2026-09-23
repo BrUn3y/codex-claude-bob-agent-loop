@@ -1,38 +1,44 @@
-# Codex + Claude Agent Loop
+# Codex + Claude + Bob Agent Loop
 
-A reusable, dependency-free project template that makes Codex and Claude Code work as an auditable engineering pair. Both agents form independent opinions in parallel, then alternate implementation and review turns until the reviewer approves, reports a blocker, or the configured round limit is reached.
+A reusable, dependency-free project template that makes Codex, Claude Code, and Bob Shell work as an auditable engineering team. All three agents form independent opinions in parallel, one implements, and the other two review independently. Approval requires both reviewers.
 
 **Created by Bruney for Bruney.**
 
 ## Why this exists
 
-`AGENTS.md` and `CLAUDE.md` provide durable instructions, but instruction files alone do not create process-to-process communication. This template adds a small Python coordinator that passes each agent's output to the other, persists every handoff, enforces read-only review turns, and prevents two agents from editing the same working tree simultaneously.
+Agent instruction files provide durable context, but they do not create process-to-process communication. This template adds a small Python coordinator that passes every agent's output to its peers, persists each handoff, runs two reviews in parallel, and prevents multiple agents from editing the same working tree simultaneously.
 
 ```mermaid
 flowchart LR
     O[Objective] --> C1[Codex consultation]
     O --> C2[Claude consultation]
-    C1 --> I[Implementer]
+    O --> C3[Bob consultation]
+    C1 --> I[One implementer]
     C2 --> I
-    I --> R[Peer review]
-    R -->|Approved| D[Complete]
-    R -->|Changes requested| S[Swap roles]
+    C3 --> I
+    I --> R1[Peer review A]
+    I --> R2[Peer review B]
+    R1 --> A{Aggregate verdict}
+    R2 --> A
+    A -->|Both approve| D[Complete]
+    A -->|Changes requested| S[Rotate implementer]
     S --> I
-    R -->|Blocked| B[Stop with evidence]
+    A -->|Any blocked| B[Stop with evidence]
 ```
 
 ## What is included
 
-- Shared instructions in `AGENTS.md`, with a Claude-specific entry point in `CLAUDE.md`.
+- Shared instructions in `AGENTS.md`, plus native project rules for Claude Code and Bob Shell.
 - Durable cross-agent knowledge in `MEMORY.md`.
 - A documented state machine and handoff contract in `docs/AGENT_PROTOCOL.md`.
-- Explicit no-approval CLI invocation for both agents.
-- Parallel, read-only consultation followed by serialized editing and peer review.
-- Equal peer capabilities: either agent can implement or review with the same effective repository authority.
-- Balanced roles: the first implementer is selected automatically without a permanent product preference; requested changes swap the roles.
-- Local, append-only JSONL transcripts and per-turn prompt, response, and process logs.
-- Timeouts, nonzero-exit handling, strict verdict parsing, and a maximum-round guard.
-- Offline tests with deterministic fake agents, plus an optional live handshake test.
+- Explicit no-approval invocation for all three CLIs.
+- Three parallel, read-only consultations followed by serialized implementation.
+- Two independent, parallel reviews with unanimous approval.
+- Equal peer capabilities: any agent can implement or review with the same effective repository authority.
+- Balanced role rotation with no permanent product preference.
+- Local JSONL transcripts and per-turn prompt, response, and process logs.
+- Timeouts, failure-artifact retention, strict verdict parsing, and a maximum-round guard.
+- Offline deterministic tests and an optional three-agent live handshake.
 - No runtime Python dependencies.
 
 ## Requirements
@@ -41,12 +47,13 @@ flowchart LR
 - Git
 - [Codex CLI](https://learn.chatgpt.com/docs/codex/quickstart) installed and authenticated
 - [Claude Code](https://code.claude.com/docs/en/quickstart) installed and authenticated
+- [IBM Bob](https://www.ibm.com/products/bob) / Bob Shell installed and authenticated
 
-This template has been exercised with Codex CLI `0.155.1` and Claude Code `2.1.280`. Newer compatible versions should work, but their command-line flags can change.
+This template has been exercised with Codex CLI `0.155.1`, Claude Code `2.1.280`, and Bob Shell `1.0.6`. Newer compatible versions should work, but CLI flags can change.
 
 ## Quick start
 
-Clone or copy the template into a trusted project, then run:
+Keep all three agents in the same trusted repository, then run:
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -54,7 +61,7 @@ python3 -m agent_loop doctor
 python3 -m agent_loop smoke-test
 ```
 
-The first command tests the coordinator without model calls. `doctor` validates the repository, instructions, and CLI installations. `smoke-test` makes one minimal live call to each authenticated agent and verifies both can read the project context.
+The unit suite tests the coordinator without model calls. `doctor` validates the repository and all three CLI installations. `smoke-test` makes one minimal live call to each authenticated agent and verifies that Codex, Claude, and Bob can load the shared project context.
 
 Start a development loop with an inline objective:
 
@@ -63,30 +70,30 @@ python3 -m agent_loop run \
   "Add pagination to the API, include focused tests, and update the documentation."
 ```
 
-The user can also tell an active coding agent: `Use Agent Coordinator: <objective>`. Repository instructions require ordinary requests to remain single-agent and prevent child turns from recursively launching new loops.
+The user can also tell an active coding agent: `Use Agent Coordinator: <objective>`. Ordinary requests remain single-agent, and coordinator child turns cannot recursively launch new loops.
 
-Or keep a longer objective in a file:
+Use an objective file:
 
 ```bash
 python3 -m agent_loop run --objective-file examples/objective.md --max-rounds 4
 ```
 
-Choose Claude as the first implementer or change the per-agent timeout:
+Choose Bob as the first implementer or change the per-agent timeout:
 
 ```bash
 python3 -m agent_loop run \
-  --first claude \
+  --first bob \
   --timeout 2400 \
   "Refactor the parser without changing its public behavior."
 ```
 
-Inspect the latest session:
+Inspect the latest local session:
 
 ```bash
 python3 -m agent_loop status
 ```
 
-The `scripts/agent-loop` wrapper provides the same commands from any working directory:
+The wrapper provides the same commands from any working directory:
 
 ```bash
 ./scripts/agent-loop doctor
@@ -98,17 +105,17 @@ The `scripts/agent-loop` wrapper provides the same commands from any working dir
 Each run creates `.agent-loop/sessions/<session-id>/`, which is ignored by Git:
 
 ```text
-session.json       Current state and final verdict
+session.json       Current state and aggregate verdict
 objective.md       Original objective
 transcript.jsonl   Ordered event ledger
 prompts/           Exact prompts sent to each agent
-responses/         Agent handoffs and reviews
+responses/         Consultations, handoffs, and reviews
 logs/              Commands, exit status, stdout, and stderr
 ```
 
-Both consultations run concurrently and are read-only. The first implementer receives both opinions. The reviewer receives the implementation handoff but must verify it against the actual diff. A requested change becomes direct context for the other agent's implementation turn. This creates explicit dependency without unsafe concurrent writes.
+All three consultations run concurrently and are read-only. The implementer receives all three opinions. The two remaining agents review the actual working tree independently and in parallel. Both reviewers must approve. Any requested change, together with both reviews, becomes direct context for the next implementer in the Codex → Claude → Bob rotation.
 
-The coordinator recognizes only these review verdicts:
+Each reviewer must emit one final verdict:
 
 ```text
 VERDICT: APPROVED
@@ -116,65 +123,68 @@ VERDICT: CHANGES_REQUESTED
 VERDICT: BLOCKED
 ```
 
-A missing or malformed verdict is treated as `CHANGES_REQUESTED`, never as approval.
+A missing, malformed, duplicated, or non-final verdict becomes `CHANGES_REQUESTED`. One `BLOCKED` result stops the loop. `APPROVED` is accepted only when both peer reviewers approve.
 
 ## No-approval mode
 
-The coordinator starts Codex with:
+Codex starts with:
 
 ```text
 codex exec --dangerously-bypass-approvals-and-sandbox ...
 ```
 
-It starts Claude Code with:
+Claude Code starts with:
 
 ```text
 claude --print --dangerously-skip-permissions --permission-prompts none ...
 ```
 
-The repository also contains `.codex/config.toml` with `approval_policy = "never"` and `sandbox_mode = "danger-full-access"`. The command-line flags are still passed explicitly so automated runs do not depend on project-trust configuration loading.
+Bob Shell starts with:
 
-Claude Code intentionally does not receive `bypassPermissions` from `.claude/settings.json`. Current Claude Code documentation states that `permissions.defaultMode = "bypassPermissions"` does not take effect from project or local settings; it must come from user/managed settings or the CLI. The coordinator therefore supplies the CLI option on every turn.
+```text
+bob --chat-mode code --trust --approval-mode yolo ...
+```
 
-The products use different flag names, but the effective authority is symmetric: both can inspect, edit, run tests, and use their normal tools. Read-only review behavior is an equal protocol constraint, not a weaker Claude or Codex configuration.
+Repository configuration is stored in `.codex/`, `.claude/`, and `.bob/`. The coordinator still passes no-approval options on every call so automation does not depend on mutable user settings. Bob's `--approval-mode yolo` enables file modifications and automatically accepts actions; `--trust` marks the shared workspace trusted. Bob rejects combining this option with the legacy `--yolo` alias, so the coordinator passes only the explicit approval mode.
+
+The products use different flag names, but the effective authority is symmetric: each can inspect, edit, run tests, and use its normal tools. Read-only consultation and review behavior is a protocol constraint applied equally by role.
 
 > [!WARNING]
-> No-approval mode removes a major safety boundary. Run it only in repositories you trust, ideally inside an isolated container or virtual machine. Read [SECURITY.md](SECURITY.md) before using the live loop. Disabling prompts does not expand the objective or authorize destructive, external, or unrelated work.
+> No-approval mode removes a major safety boundary. Run it only in repositories you trust, ideally inside an isolated container or virtual machine. Read [SECURITY.md](SECURITY.md). Disabling prompts does not expand the objective or authorize destructive, external, or unrelated work.
 
-## Adapting the template to a project
+## Adapting the template
 
-1. Copy these files into the new repository.
+1. Copy these files into the target repository.
 2. Replace the generic verification commands in `AGENTS.md` with the project's real commands.
 3. Add stable architecture facts and constraints to `MEMORY.md`.
 4. Keep secrets and transient task status out of committed instruction files.
-5. Run the offline tests and both-agent smoke test.
+5. Run the offline tests and three-agent smoke test.
 6. Commit the base before starting a live loop so changes remain recoverable.
 
-For an existing repository, preserve any current `AGENTS.md` or `CLAUDE.md` guidance and merge the coordination sections instead of overwriting project-specific rules.
+For an existing repository, merge the coordination sections into current instructions instead of overwriting project-specific rules.
 
 ## Custom CLI commands
 
-If the executables are not on `PATH`, or you use wrappers, set:
+If an executable is not on `PATH`, or you use wrappers, set:
 
 ```bash
 export AGENT_LOOP_CODEX_COMMAND="/absolute/path/to/codex"
 export AGENT_LOOP_CLAUDE_COMMAND="/absolute/path/to/claude"
+export AGENT_LOOP_BOB_COMMAND="/absolute/path/to/bob"
 python3 -m agent_loop doctor
 ```
 
-The values are parsed as command lines, so a wrapper with fixed arguments is also supported. Do not put API keys in these variables; process commands are written to local session logs.
+Values are parsed as command lines, so wrappers with fixed arguments are supported. Do not place API keys in these variables; commands are written to local session logs.
 
 ## Design boundaries
 
-- Parallelism is used for independent read-only analysis. Writes are serialized because both agents share one working tree.
-- The coordinator transports context and state; it does not judge code quality.
+- Parallelism is used only for read-only consultation and review. Writes are serialized because all agents share one working tree.
+- The coordinator transports context and aggregates explicit verdicts; it does not judge code quality.
 - `MEMORY.md` is curated durable knowledge, not a transcript or secret store.
-- Agent instruction files guide behavior but do not enforce operating-system security.
+- Agent instructions guide behavior but do not enforce operating-system security.
 - Publishing, deployment, and destructive operations remain outside the loop unless the objective explicitly includes them.
 
 ## Official references
-
-The template follows these current product behaviors:
 
 - OpenAI: [Custom instructions with AGENTS.md](https://learn.chatgpt.com/docs/agent-configuration/agents-md)
 - OpenAI: [Codex non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode)
@@ -184,6 +194,7 @@ The template follows these current product behaviors:
 - Anthropic: [Claude Code settings](https://code.claude.com/docs/en/settings)
 - Anthropic: [Claude Code permissions](https://code.claude.com/docs/en/permissions)
 - Anthropic: [Claude Code CLI reference](https://code.claude.com/docs/en/cli-reference)
+- IBM: [Bob product page](https://www.ibm.com/products/bob)
 
 ## License
 

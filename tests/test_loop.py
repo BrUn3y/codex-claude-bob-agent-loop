@@ -9,7 +9,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from agent_loop.core import AgentExecutionError, LoopConfig, parse_verdict, run_loop, run_smoke_test
+from agent_loop.core import (
+    AgentExecutionError,
+    LoopConfig,
+    aggregate_verdicts,
+    parse_verdict,
+    run_loop,
+    run_smoke_test,
+)
 
 
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +33,7 @@ class LoopTests(unittest.TestCase):
             "docs/AGENT_PROTOCOL.md",
             ".codex/config.toml",
             ".claude/settings.json",
+            ".bob/settings.json",
         ):
             destination = self.root / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -33,6 +41,7 @@ class LoopTests(unittest.TestCase):
         mock = str(SOURCE_ROOT / "tests" / "mock_agent.py")
         self.codex = (sys.executable, mock, "codex")
         self.claude = (sys.executable, mock, "claude")
+        self.bob = (sys.executable, mock, "bob")
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
@@ -46,6 +55,7 @@ class LoopTests(unittest.TestCase):
             "first_implementer": "codex",
             "codex_command": self.codex,
             "claude_command": self.claude,
+            "bob_command": self.bob,
         }
         values.update(overrides)
         return LoopConfig(**values)  # type: ignore[arg-type]
@@ -58,9 +68,11 @@ class LoopTests(unittest.TestCase):
         response_files = {path.name: path.read_text(encoding="utf-8") for path in (outcome.session_dir / "responses").glob("*.md")}
         self.assertIn("peer_consultations=True", response_files["round-01-implement-codex.md"])
         self.assertIn("VERDICT: CHANGES_REQUESTED", response_files["round-01-review-claude.md"])
+        self.assertIn("VERDICT: CHANGES_REQUESTED", response_files["round-01-review-bob.md"])
         self.assertIn("agent=claude", response_files["round-02-implement-claude.md"])
         self.assertIn("previous_review=True", response_files["round-02-implement-claude.md"])
         self.assertIn("VERDICT: APPROVED", response_files["round-02-review-codex.md"])
+        self.assertIn("VERDICT: APPROVED", response_files["round-02-review-bob.md"])
 
         events = [json.loads(line) for line in (outcome.session_dir / "transcript.jsonl").read_text(encoding="utf-8").splitlines()]
         sequences = [event["sequence"] for event in events]
@@ -72,12 +84,19 @@ class LoopTests(unittest.TestCase):
         self.assertEqual(outcome.verdict, "CHANGES_REQUESTED")
         codex_log = (outcome.session_dir / "logs" / "consult-codex.log").read_text(encoding="utf-8")
         claude_log = (outcome.session_dir / "logs" / "consult-claude.log").read_text(encoding="utf-8")
+        bob_log = (outcome.session_dir / "logs" / "consult-bob.log").read_text(encoding="utf-8")
         self.assertIn("--dangerously-bypass-approvals-and-sandbox", codex_log)
         self.assertIn("--dangerously-skip-permissions", claude_log)
         self.assertIn("--permission-prompts none", claude_log)
+        self.assertIn("--approval-mode yolo", bob_log)
+        self.assertIn("--trust", bob_log)
+        self.assertNotIn("--prompt", bob_log)
 
-    def test_smoke_handshake_calls_both_agents(self) -> None:
-        self.assertEqual(run_smoke_test(self.config()), {"codex": True, "claude": True})
+    def test_smoke_handshake_calls_all_agents(self) -> None:
+        self.assertEqual(
+            run_smoke_test(self.config()),
+            {"codex": True, "claude": True, "bob": True},
+        )
 
     def test_missing_verdict_is_never_approval(self) -> None:
         self.assertEqual(parse_verdict("Looks fine"), "CHANGES_REQUESTED")
@@ -112,6 +131,29 @@ class LoopTests(unittest.TestCase):
         self.assertEqual(outcome.state, "COMPLETE")
         self.assertTrue((outcome.session_dir / "responses" / "round-01-implement-claude.md").is_file())
         self.assertTrue((outcome.session_dir / "responses" / "round-01-review-codex.md").is_file())
+        self.assertTrue((outcome.session_dir / "responses" / "round-01-review-bob.md").is_file())
+
+    def test_bob_can_implement_first_with_two_peer_reviewers(self) -> None:
+        with patch.dict(os.environ, {"MOCK_APPROVE_FIRST": "1"}):
+            outcome = run_loop(self.config(first_implementer="bob"))
+        self.assertEqual(outcome.state, "COMPLETE")
+        self.assertTrue((outcome.session_dir / "responses" / "round-01-implement-bob.md").is_file())
+        self.assertTrue((outcome.session_dir / "responses" / "round-01-review-codex.md").is_file())
+        self.assertTrue((outcome.session_dir / "responses" / "round-01-review-claude.md").is_file())
+
+    def test_review_aggregation_requires_unanimous_approval(self) -> None:
+        self.assertEqual(
+            aggregate_verdicts({"claude": "APPROVED", "bob": "APPROVED"}),
+            "APPROVED",
+        )
+        self.assertEqual(
+            aggregate_verdicts({"claude": "APPROVED", "bob": "CHANGES_REQUESTED"}),
+            "CHANGES_REQUESTED",
+        )
+        self.assertEqual(
+            aggregate_verdicts({"claude": "CHANGES_REQUESTED", "bob": "BLOCKED"}),
+            "BLOCKED",
+        )
 
     def test_blocked_verdict_is_a_terminal_state(self) -> None:
         with patch.dict(os.environ, {"MOCK_BLOCK_FIRST": "1"}):

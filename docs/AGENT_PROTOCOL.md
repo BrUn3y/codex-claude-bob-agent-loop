@@ -1,17 +1,19 @@
-# Codex–Claude Coordination Protocol
+# Codex–Claude–Bob Coordination Protocol
 
 ## Purpose
 
-This protocol lets Codex and Claude Code exchange independent opinions, implementation handoffs, reviews, and verification results without relying on hidden chat state. The coordinator is the transport; the repository is the source of truth.
+This protocol lets Codex, Claude Code, and Bob Shell exchange independent opinions, implementation handoffs, reviews, and verification results without relying on hidden chat state. The coordinator is the transport; the repository is the source of truth.
 
 ## Roles
 
 - **Coordinator:** starts processes, records events, enforces timeouts, and advances the state machine. It never decides whether code is correct.
 - **Implementer:** changes the working tree, runs checks, and produces a structured handoff.
-- **Reviewer:** independently inspects the actual diff and test results. It does not edit.
-- **Peer consultant:** analyzes the objective independently before implementation. Both agents consult in parallel.
+- **Reviewers:** the two non-implementing peers independently inspect the actual diff and test results in parallel. They do not edit.
+- **Peer consultant:** analyzes the objective independently before implementation. All three agents consult in parallel.
 
-The user activates the coordinator explicitly. The coordinator is neutral and does not become a third engineering authority. Codex and Claude receive equivalent working-tree access and are equally eligible for every role. Automatic assignment chooses the first implementer without a permanent product preference; the user can override it with `--first codex` or `--first claude`. If review requests changes, roles alternate. This makes each agent consume and improve the other agent's work while keeping writes serialized.
+The user activates the coordinator explicitly. The coordinator is neutral and does not become a fourth engineering authority. Codex, Claude, and Bob receive equivalent working-tree access and are equally eligible for every role. Automatic assignment chooses the first implementer without a permanent product preference; the user can override it with `--first codex`, `--first claude`, or `--first bob`. If either reviewer requests changes, implementation rotates to the next peer. This makes every agent consume and improve peer work while keeping writes serialized.
+
+Approval is unanimous: both reviewers must return `APPROVED`. A single `CHANGES_REQUESTED` keeps the loop active, and a concrete `BLOCKED` verdict stops it.
 
 Coordinator-generated prompts never activate another coordinator. Nested loops are forbidden.
 
@@ -24,17 +26,17 @@ CREATED
 PARALLEL_CONSULTATION
    |
    v
-IMPLEMENTING(round N) --> REVIEWING(round N) --> APPROVED --> COMPLETE
-        ^                         |
-        |                         +--> BLOCKED
-        +------- CHANGES_REQUESTED
+IMPLEMENTING(round N) --> REVIEWING(two peers, round N) --> UNANIMOUS APPROVAL --> COMPLETE
+        ^                                  |
+        |                                  +--> ANY BLOCKED --> BLOCKED
+        +------- ANY CHANGES_REQUESTED
         |
         +------- round limit reached --> MAX_ROUNDS
 
 Any agent execution failure or timeout --> FAILED
 ```
 
-The loop stops when a reviewer approves, a reviewer reports a concrete blocker, an agent command fails, a timeout occurs, or the round limit is reached.
+The loop completes only when both reviewers approve unanimously. It stops without approval when either reviewer reports a concrete blocker, an agent command fails, a timeout occurs, or the round limit is reached.
 
 ## Runtime layout
 
@@ -58,21 +60,22 @@ Each run creates an ignored directory:
 
 - Runs concurrently for speed and independent judgment.
 - Is strictly read-only.
-- Produces approach, risks, proposed checks, and open questions.
+- Produces three independent approaches, risks, proposed checks, and open questions.
 
 ### Implementation
 
-- Receives the objective, both consultations, and the latest review.
+- Receives the objective, all three consultations, and the latest pair of reviews.
 - May edit the working tree.
 - Must inspect current files rather than assuming the previous handoff is accurate.
 - Must run relevant checks and report exact outcomes.
 
 ### Review
 
-- Receives the objective and implementation handoff.
+- Both non-implementing peers receive the objective and implementation handoff.
 - Must inspect the actual working tree and diff.
 - May run read-only checks and tests but must not modify files.
 - Must return one final verdict line defined in `AGENTS.md`.
+- Runs in parallel with the other reviewer; reviewers do not see or influence each other's verdict before responding.
 
 ## Conflict and failure handling
 
@@ -81,11 +84,11 @@ Each run creates an ignored directory:
 - If an agent exits nonzero or times out, persist its output and mark the session failed.
 - Agent identity never grants extra authority. A read-only constraint follows the reviewer role, and write access follows the implementer role.
 - If a response lacks a valid review verdict, treat it as `CHANGES_REQUESTED`; ambiguity is not approval.
-- If the round limit is reached, leave the session as `MAX_ROUNDS` and preserve the latest review for a future resume.
+- If the round limit is reached, leave the session as `MAX_ROUNDS` and preserve the latest pair of reviews for a future run.
 
 ## Security boundary
 
-The coordinator deliberately starts both CLIs without interactive approvals. This is suitable only for trusted local repositories or external sandboxes. The no-prompt mode does not authorize work outside the user's objective. Agents must still obey repository scope, protect secrets, and avoid destructive operations.
+The coordinator deliberately starts all three CLIs without interactive approvals. This is suitable only for trusted local repositories or external sandboxes. The no-prompt mode does not authorize work outside the user's objective. Agents must still obey repository scope, protect secrets, and avoid destructive operations.
 
 ## Human recovery
 

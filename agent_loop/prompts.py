@@ -25,18 +25,23 @@ def consultation_prompt(agent: str, objective: str, session_id: str) -> str:
 
 def implementation_prompt(
     agent: str,
-    reviewer: str,
+    reviewers: tuple[str, ...],
     objective: str,
     session_id: str,
     round_number: int,
     consultations: dict[str, str],
-    previous_review: str | None,
+    previous_reviews: str | None,
 ) -> str:
-    review_block = previous_review or "No previous review; this is the first implementation turn."
+    review_block = previous_reviews or "No previous reviews; this is the first implementation turn."
+    reviewer_names = ", ".join(reviewers)
+    consultation_block = "\n\n".join(
+        f"{name.upper()} CONSULTATION\n{consultations.get(name, 'Unavailable')}"
+        for name in ("codex", "claude", "bob")
+    )
     return dedent(
         f"""
         You are {agent}, the IMPLEMENTER for round {round_number} of session {session_id}.
-        {reviewer} will independently review your work after this turn.
+        The independent reviewers for this turn are: {reviewer_names}.
 
         Read AGENTS.md, docs/AGENT_PROTOCOL.md, and MEMORY.md first. Inspect the current working
         tree before editing and preserve unrelated changes. You may edit files in this phase.
@@ -46,17 +51,14 @@ def implementation_prompt(
         OBJECTIVE
         {objective}
 
-        CODEX CONSULTATION
-        {consultations.get("codex", "Unavailable")}
+        PEER CONSULTATIONS
+        {consultation_block}
 
-        CLAUDE CONSULTATION
-        {consultations.get("claude", "Unavailable")}
-
-        PREVIOUS REVIEW
+        PREVIOUS REVIEWS
         {review_block}
 
         End with exactly these headings: SUMMARY, CHANGES, TESTS, RISKS, HANDOFF.
-        In HANDOFF, tell {reviewer} what to inspect and list any unresolved concern.
+        In HANDOFF, tell {reviewer_names} what to inspect and list any unresolved concern.
         """
     ).strip()
 

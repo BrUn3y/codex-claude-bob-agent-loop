@@ -1,4 +1,4 @@
-"""File-backed, turn-based coordination between Codex and Claude Code."""
+"""File-backed coordination between Codex, Claude Code, and Bob Shell."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from uuid import uuid4
 from .prompts import consultation_prompt, implementation_prompt, review_prompt, smoke_prompt
 
 VERDICT_PATTERN = re.compile(r"^VERDICT:\s*(APPROVED|CHANGES_REQUESTED|BLOCKED)\s*$", re.MULTILINE)
+AGENT_NAMES = ("codex", "claude", "bob")
 REQUIRED_FILES = (
     "AGENTS.md",
     "CLAUDE.md",
@@ -27,6 +28,7 @@ REQUIRED_FILES = (
     "docs/AGENT_PROTOCOL.md",
     ".codex/config.toml",
     ".claude/settings.json",
+    ".bob/settings.json",
 )
 
 
@@ -43,14 +45,15 @@ class LoopConfig:
     first_implementer: str = "auto"
     codex_command: tuple[str, ...] = ("codex",)
     claude_command: tuple[str, ...] = ("claude",)
+    bob_command: tuple[str, ...] = ("bob",)
 
     def __post_init__(self) -> None:
         if self.max_rounds < 1:
             raise ValueError("max_rounds must be at least 1")
         if self.timeout_seconds < 1:
             raise ValueError("timeout_seconds must be at least 1")
-        if self.first_implementer not in {"auto", "codex", "claude"}:
-            raise ValueError("first_implementer must be 'auto', 'codex', or 'claude'")
+        if self.first_implementer not in {"auto", *AGENT_NAMES}:
+            raise ValueError("first_implementer must be 'auto', 'codex', 'claude', or 'bob'")
         if not self.objective.strip():
             raise ValueError("objective cannot be empty")
 
@@ -160,6 +163,18 @@ class AgentRunner:
                 "--output-format",
                 "text",
             )
+        elif agent == "bob":
+            command = (
+                *self.config.bob_command,
+                "--chat-mode",
+                "code",
+                "--trust",
+                "--approval-mode",
+                "yolo",
+                "--hide-intermediary-output",
+                "--output-format",
+                "text",
+            )
         else:
             raise ValueError(f"Unknown agent: {agent}")
 
@@ -212,7 +227,7 @@ def run_loop(config: LoopConfig) -> RunOutcome:
     try:
         store.set_state("PARALLEL_CONSULTATION", rounds=0)
         consultations = _run_consultations(runner, store, config.objective)
-        previous_review: str | None = None
+        previous_reviews: str | None = None
         implementer = (
             config.first_implementer
             if config.first_implementer != "auto"
@@ -221,35 +236,38 @@ def run_loop(config: LoopConfig) -> RunOutcome:
         store.event("coordinator", "assignment", "first_implementer", {"agent": implementer})
 
         for round_number in range(1, config.max_rounds + 1):
-            reviewer = _peer(implementer)
+            reviewers = _reviewers(implementer)
             store.set_state("IMPLEMENTING", rounds=round_number, active_agent=implementer)
             implementation = implementation_prompt(
                 implementer,
-                reviewer,
+                reviewers,
                 config.objective,
                 store.session_id,
                 round_number,
                 consultations,
-                previous_review,
+                previous_reviews,
             )
             implementation_result = runner.run(implementer, implementation)
             store.save_turn(f"round-{round_number:02d}-implement-{implementer}", implementation, implementation_result)
             _ensure_success(implementation_result, config.timeout_seconds)
 
-            store.set_state("REVIEWING", rounds=round_number, active_agent=reviewer)
-            review = review_prompt(
-                reviewer,
+            store.set_state("REVIEWING", rounds=round_number, active_agents=list(reviewers))
+            review_results, review_verdicts = _run_reviews(
+                runner,
+                store,
+                reviewers,
                 implementer,
                 config.objective,
-                store.session_id,
                 round_number,
                 implementation_result.response,
             )
-            review_result = runner.run(reviewer, review)
-            store.save_turn(f"round-{round_number:02d}-review-{reviewer}", review, review_result)
-            _ensure_success(review_result, config.timeout_seconds)
-            verdict = parse_verdict(review_result.response)
-            store.event(reviewer, "review", "verdict", {"round": round_number, "verdict": verdict})
+            verdict = aggregate_verdicts(review_verdicts)
+            store.event(
+                "coordinator",
+                "review",
+                "aggregate_verdict",
+                {"round": round_number, "verdict": verdict, "reviews": review_verdicts},
+            )
 
             if verdict == "APPROVED":
                 store.set_state("COMPLETE", rounds=round_number, verdict=verdict)
@@ -258,8 +276,8 @@ def run_loop(config: LoopConfig) -> RunOutcome:
                 store.set_state("BLOCKED", rounds=round_number, verdict=verdict)
                 return RunOutcome(store.session_id, "BLOCKED", round_number, store.directory, verdict)
 
-            previous_review = review_result.response
-            implementer = reviewer
+            previous_reviews = _review_bundle(review_results, review_verdicts)
+            implementer = _next_implementer(implementer)
 
         store.set_state("MAX_ROUNDS", rounds=config.max_rounds, verdict="CHANGES_REQUESTED")
         return RunOutcome(
@@ -276,12 +294,12 @@ def run_loop(config: LoopConfig) -> RunOutcome:
 
 
 def run_smoke_test(config: LoopConfig) -> dict[str, bool]:
-    """Call both live CLIs concurrently and validate their handshake tokens."""
+    """Call all live CLIs concurrently and validate their handshake tokens."""
     _validate_root(config.root.resolve())
     runner = AgentRunner(config)
     responses: dict[str, str] = {}
-    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="agent-smoke") as pool:
-        futures = {pool.submit(runner.run, agent, smoke_prompt(agent)): agent for agent in ("codex", "claude")}
+    with ThreadPoolExecutor(max_workers=len(AGENT_NAMES), thread_name_prefix="agent-smoke") as pool:
+        futures = {pool.submit(runner.run, agent, smoke_prompt(agent)): agent for agent in AGENT_NAMES}
         for future in as_completed(futures):
             agent = futures[future]
             result = future.result()
@@ -297,6 +315,16 @@ def parse_verdict(response: str) -> str:
     if len(matches) != 1 or final_match is None:
         return "CHANGES_REQUESTED"
     return final_match.group(1)
+
+
+def aggregate_verdicts(verdicts: dict[str, str]) -> str:
+    """Require unanimous approval while preserving any concrete blocker."""
+    values = tuple(verdicts.values())
+    if "BLOCKED" in values:
+        return "BLOCKED"
+    if values and all(value == "APPROVED" for value in values):
+        return "APPROVED"
+    return "CHANGES_REQUESTED"
 
 
 def command_from_env(variable: str, default: str) -> tuple[str, ...]:
@@ -350,29 +378,88 @@ def latest_session(root: Path) -> dict[str, object] | None:
 
 def _run_consultations(runner: AgentRunner, store: SessionStore, objective: str) -> dict[str, str]:
     prompts = {
-        agent: consultation_prompt(agent, objective, store.session_id) for agent in ("codex", "claude")
+        agent: consultation_prompt(agent, objective, store.session_id) for agent in AGENT_NAMES
     }
     results: dict[str, CommandResult] = {}
-    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="agent-consult") as pool:
+    with ThreadPoolExecutor(max_workers=len(AGENT_NAMES), thread_name_prefix="agent-consult") as pool:
         futures = {pool.submit(runner.run, agent, prompts[agent]): agent for agent in prompts}
         for future in as_completed(futures):
             agent = futures[future]
             results[agent] = future.result()
-    for agent in ("codex", "claude"):
+    for agent in AGENT_NAMES:
         store.save_turn(f"consult-{agent}", prompts[agent], results[agent])
-    for agent in ("codex", "claude"):
+    for agent in AGENT_NAMES:
         _ensure_success(results[agent], runner.config.timeout_seconds)
-    return {agent: results[agent].response for agent in ("codex", "claude")}
+    return {agent: results[agent].response for agent in AGENT_NAMES}
 
 
-def _peer(agent: str) -> str:
-    return "claude" if agent == "codex" else "codex"
+def _run_reviews(
+    runner: AgentRunner,
+    store: SessionStore,
+    reviewers: tuple[str, ...],
+    implementer: str,
+    objective: str,
+    round_number: int,
+    handoff: str,
+) -> tuple[dict[str, CommandResult], dict[str, str]]:
+    prompts = {
+        reviewer: review_prompt(
+            reviewer,
+            implementer,
+            objective,
+            store.session_id,
+            round_number,
+            handoff,
+        )
+        for reviewer in reviewers
+    }
+    results: dict[str, CommandResult] = {}
+    with ThreadPoolExecutor(max_workers=len(reviewers), thread_name_prefix="agent-review") as pool:
+        futures = {
+            pool.submit(runner.run, reviewer, prompts[reviewer]): reviewer for reviewer in reviewers
+        }
+        for future in as_completed(futures):
+            reviewer = futures[future]
+            results[reviewer] = future.result()
+    verdicts: dict[str, str] = {}
+    for reviewer in reviewers:
+        store.save_turn(
+            f"round-{round_number:02d}-review-{reviewer}", prompts[reviewer], results[reviewer]
+        )
+    for reviewer in reviewers:
+        _ensure_success(results[reviewer], runner.config.timeout_seconds)
+        verdicts[reviewer] = parse_verdict(results[reviewer].response)
+        store.event(
+            reviewer,
+            "review",
+            "verdict",
+            {"round": round_number, "verdict": verdicts[reviewer]},
+        )
+    return results, verdicts
+
+
+def _reviewers(implementer: str) -> tuple[str, ...]:
+    return tuple(agent for agent in AGENT_NAMES if agent != implementer)
+
+
+def _next_implementer(current: str) -> str:
+    return AGENT_NAMES[(AGENT_NAMES.index(current) + 1) % len(AGENT_NAMES)]
+
+
+def _review_bundle(
+    results: dict[str, CommandResult], verdicts: dict[str, str]
+) -> str:
+    return "\n\n".join(
+        f"{reviewer.upper()} REVIEW ({verdicts[reviewer]})\n{results[reviewer].response}"
+        for reviewer in AGENT_NAMES
+        if reviewer in results
+    )
 
 
 def _auto_first_implementer(session_id: str) -> str:
-    """Choose either peer without permanently privileging one product."""
+    """Choose a peer without permanently privileging one product."""
     entropy = session_id.rsplit("-", 1)[-1]
-    return "codex" if int(entropy, 16) % 2 == 0 else "claude"
+    return AGENT_NAMES[int(entropy, 16) % len(AGENT_NAMES)]
 
 
 def _ensure_success(result: CommandResult, timeout_seconds: int) -> None:

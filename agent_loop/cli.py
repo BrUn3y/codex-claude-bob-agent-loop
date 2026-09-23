@@ -21,7 +21,7 @@ from .core import (
 def parser() -> argparse.ArgumentParser:
     root_parser = argparse.ArgumentParser(
         prog="agent-loop",
-        description="Coordinate Codex and Claude Code through an auditable engineering loop.",
+        description="Coordinate Codex, Claude Code, and Bob Shell through an auditable loop.",
     )
     root_parser.add_argument("--root", type=Path, default=Path.cwd(), help="Repository root")
     subparsers = root_parser.add_subparsers(dest="command", required=True)
@@ -31,11 +31,11 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--objective-file", type=Path, help="Read the objective from a UTF-8 file")
     run.add_argument("--max-rounds", type=int, default=3)
     run.add_argument("--timeout", type=int, default=1800, help="Per-agent timeout in seconds")
-    run.add_argument("--first", choices=("auto", "codex", "claude"), default="auto")
+    run.add_argument("--first", choices=("auto", "codex", "claude", "bob"), default="auto")
 
-    subparsers.add_parser("doctor", help="Check files, Git, and both CLI installations")
+    subparsers.add_parser("doctor", help="Check files, Git, and all three CLI installations")
     subparsers.add_parser("status", help="Show the latest local coordination session")
-    smoke = subparsers.add_parser("smoke-test", help="Run a minimal live handshake with both CLIs")
+    smoke = subparsers.add_parser("smoke-test", help="Run a minimal live handshake with all CLIs")
     smoke.add_argument("--timeout", type=int, default=180)
     return root_parser
 
@@ -45,10 +45,14 @@ def main(argv: list[str] | None = None) -> int:
     root = args.root.resolve()
     codex_command = command_from_env("AGENT_LOOP_CODEX_COMMAND", "codex")
     claude_command = command_from_env("AGENT_LOOP_CLAUDE_COMMAND", "claude")
+    bob_command = command_from_env("AGENT_LOOP_BOB_COMMAND", "bob")
 
     try:
         if args.command == "doctor":
-            report = doctor(root, (("codex", codex_command), ("claude", claude_command)))
+            report = doctor(
+                root,
+                (("codex", codex_command), ("claude", claude_command), ("bob", bob_command)),
+            )
             print(json.dumps(report, indent=2))
             return 0 if report["ok"] else 1
 
@@ -67,6 +71,7 @@ def main(argv: list[str] | None = None) -> int:
                 timeout_seconds=args.timeout,
                 codex_command=codex_command,
                 claude_command=claude_command,
+                bob_command=bob_command,
             )
             report = run_smoke_test(config)
             print(json.dumps(report, indent=2))
@@ -81,6 +86,7 @@ def main(argv: list[str] | None = None) -> int:
             first_implementer=args.first,
             codex_command=codex_command,
             claude_command=claude_command,
+            bob_command=bob_command,
         )
         outcome = run_loop(config)
         print(

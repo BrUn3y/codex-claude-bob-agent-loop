@@ -28,7 +28,9 @@ def main() -> int:
     if "peer consultant" in prompt:
         response = f"APPROACH\n{agent} independent plan\nRISKS\nnone\nTESTS\nunit tests\nHANDOFF\nready"
     elif "the IMPLEMENTER for round" in prompt:
-        peer_seen = "codex independent plan" in prompt and "claude independent plan" in prompt
+        peer_seen = all(
+            f"{peer} independent plan" in prompt for peer in ("codex", "claude", "bob")
+        )
         previous_seen = "VERDICT: CHANGES_REQUESTED" in prompt
         response = (
             "SUMMARY\nimplemented\nCHANGES\nmock change\nTESTS\npassed\nRISKS\nnone\nHANDOFF\n"

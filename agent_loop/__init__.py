@@ -1,4 +1,4 @@
-"""Codex–Claude agent loop coordinator."""
+"""Codex–Claude–Bob agent loop coordinator."""
 
 from .core import LoopConfig, RunOutcome, run_loop
 

@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is the **AI Canvas Development** project—a coordinator system for managing agent-based development workflows. It enables Codex and Claude Code to collaborate through a structured protocol, alternating between parallel consultation, implementation, and review phases.
+This is a coordinator system for managing agent-based development workflows. It enables Codex, Claude Code, and Bob Shell to collaborate through a structured protocol with parallel consultation, one implementation turn, and two independent peer reviews.
 
-The coordinator orchestrates both agents to deliver correct, tested changes while keeping them synchronized through the repository as the source of truth.
+The coordinator orchestrates all three agents to deliver correct, tested changes while keeping them synchronized through the repository as the source of truth.
 
 ## Repository References
 
@@ -37,7 +37,7 @@ python3 -m unittest tests.test_loop -v
 
 ## Claude Code Requirements
 
-Start the loop only when the user explicitly says `Use Agent Coordinator` or directly invokes its command. Claude and Codex are equal peers with symmetric eligibility to implement and review. Never launch a nested coordinator from a coordinator-assigned turn.
+Start the loop only when the user explicitly says `Use Agent Coordinator` or directly invokes its command. Claude, Codex, and Bob are equal peers with symmetric eligibility to implement and review. Never launch a nested coordinator from a coordinator-assigned turn.
 
 When the coordinator assigns a task:
 
@@ -64,8 +64,8 @@ When the coordinator assigns a task:
 - Stay inside the assignment scope
 - Never write secrets to `.agent-loop/`, `MEMORY.md`, or commits
 - Do not undo peer work; report conflicts instead
-- Treat Codex output as peer input that must be verified against the working tree
-- Apply role constraints by phase, not identity; Claude and Codex have the same effective authority
+- Treat Codex and Bob output as peer input that must be verified against the working tree
+- Apply role constraints by phase, not identity; Claude, Codex, and Bob have the same effective authority
 
 ## Architecture Notes
 

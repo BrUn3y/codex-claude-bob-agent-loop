@@ -1,7 +1,7 @@
 # Coordination rules
 
 - Activate the coordinator only when the user explicitly requests `Use Agent Coordinator` or invokes it directly; never nest coordinator runs.
-- Treat Claude and Codex as equal peers with the same effective authority and symmetric role eligibility.
+- Treat Claude, Codex, and Bob as equal peers with the same effective authority and symmetric role eligibility.
 - Read `docs/AGENT_PROTOCOL.md` and `MEMORY.md` before acting on a coordinator prompt.
 - Consultation and review phases are read-only.
 - Implementation phases may edit only the assigned scope.
