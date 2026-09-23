@@ -8,6 +8,10 @@ TriForge is a reusable, dependency-free project template that turns Codex, Claud
 
 **Created by Bruney for Bruney.**
 
+![TriForge agent communication live log](assets/triforge-agent-communication.gif)
+
+The live log makes every handoff auditable: three parallel consultations feed one implementation, Codex and Claude review Bob's work independently, and the loop completes only after unanimous approval. The same events are persisted in `live.log` and `transcript.jsonl`.
+
 ## Why this exists
 
 Agent instruction files provide durable context, but they do not create process-to-process communication. This template adds a small Python coordinator that passes every agent's output to its peers, persists each handoff, runs two reviews in parallel, and prevents multiple agents from editing the same working tree simultaneously.
@@ -193,6 +197,13 @@ python3 -m agent_loop watch --no-follow
 ```
 
 The readable stream is saved as `live.log`. The machine-readable source remains `transcript.jsonl`. Output is emitted when an agent completes a handoff; the coordinator does not expose private chain-of-thought or raw token-by-token reasoning.
+
+The animated demo above can be regenerated locally. Pillow is needed only to render the GIF; it is not a TriForge runtime dependency:
+
+```bash
+python3 -m pip install pillow
+python3 scripts/render-agent-communication-gif.py
+```
 
 The wrapper provides the same commands from any working directory:
 
