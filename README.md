@@ -12,6 +12,79 @@ TriForge is a reusable, dependency-free project template that turns Codex, Claud
 
 Agent instruction files provide durable context, but they do not create process-to-process communication. This template adds a small Python coordinator that passes every agent's output to its peers, persists each handoff, runs two reviews in parallel, and prevents multiple agents from editing the same working tree simultaneously.
 
+## Start a new project with TriForge
+
+### Option 1: Use the GitHub template
+
+1. Open the [TriForge template](https://github.com/BrUn3y/codex-claude-bob-agent-loop/generate).
+2. Choose an owner and repository name.
+3. Select public or private visibility.
+4. Click **Create repository**.
+5. Clone the new repository and enter its directory:
+
+```bash
+git clone https://github.com/YOUR-USER/YOUR-PROJECT.git
+cd YOUR-PROJECT
+```
+
+### Option 2: Create it with GitHub CLI
+
+```bash
+gh repo create YOUR-PROJECT \
+  --template BrUn3y/codex-claude-bob-agent-loop \
+  --public \
+  --clone
+
+cd YOUR-PROJECT
+```
+
+Use `--private` instead of `--public` when the project should not be visible publicly.
+
+### Prepare the three agents
+
+Install and authenticate Codex CLI, Claude Code, and Bob Shell before starting a live loop. Confirm that all three commands are available:
+
+```bash
+codex --version
+claude --version
+bob --version
+```
+
+Then validate the template and communication layer:
+
+```bash
+python3 -m unittest discover -s tests -v
+python3 -m agent_loop doctor
+python3 -m agent_loop smoke-test
+```
+
+### Customize the project context
+
+Before the first development run:
+
+1. Replace the example objective in `examples/objective.md`.
+2. Add the project's architecture, constraints, and verified commands to `MEMORY.md`.
+3. Update the verification commands in `AGENTS.md`.
+4. Keep `.codex/`, `.claude/`, and `.bob/` committed so every agent receives the same project rules.
+5. Commit the starting point so agent changes remain easy to inspect and recover.
+
+### Start the first coordinated task
+
+```bash
+python3 -m agent_loop run --live \
+  "Inspect this new project, propose its initial architecture, implement the agreed foundation, add tests, and document how to run it."
+```
+
+Follow the same session from a second terminal:
+
+```bash
+python3 -m agent_loop watch
+```
+
+### Add TriForge to an existing project
+
+Copy the coordinator package, scripts, agent configuration directories, and shared instruction files into the existing repository. Merge existing `AGENTS.md`, `CLAUDE.md`, and project rules carefully instead of overwriting them. Then run `doctor`, the unit suite, and `smoke-test` before assigning the first objective.
+
 ```mermaid
 flowchart LR
     O[Objective] --> C1[Codex consultation]
